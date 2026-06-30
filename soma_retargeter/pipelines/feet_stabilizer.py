@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+from pathlib import Path
+
 import warp as wp
 
 import newton
@@ -12,6 +14,21 @@ _LIMB_DATA_IDX_NAME = 0
 _LIMB_DATA_IDX_EFFECTOR_INDICES = 1
 _LIMB_DATA_IDX_HINT_REF = 2
 _LIMB_DATA_IDX_HINT_OFFSET = 3
+
+
+def _path_search_roots():
+    roots = [io_utils.get_configs_dir(), io_utils.get_package_root()]
+    roots.extend(io_utils.get_package_root().parents)
+    roots.extend(Path.cwd().parents)
+    return roots
+
+
+def _robot_mjcf_path(config_data):
+    custom_path = config_data.get('mjcf_path')
+    if custom_path:
+        return newton_utils.resolve_file_path(custom_path, _path_search_roots())
+
+    return newton.utils.download_asset("unitree_g1") / "mjcf/g1_29dof_rev_1_0.xml"
 
 
 class FeetStabilizer:
@@ -30,8 +47,7 @@ class FeetStabilizer:
 
         if self.robot_type == 'unitree_g1':
             self.robot_builder = newton.ModelBuilder()
-            self.robot_builder.add_mjcf(
-                newton.utils.download_asset("unitree_g1") / "mjcf/g1_29dof_rev_1_0.xml")
+            self.robot_builder.add_mjcf(self.mjcf_path)
 
             self.num_body_count = self.robot_builder.body_count
             self.ik_model = self._build_model(1)
@@ -173,8 +189,9 @@ class FeetStabilizer:
             self.ik_solver.step(self.joint_q, self.joint_q, iterations=self.ik_iterations)
 
     def _load_config(self, config: str):
-        data = io_utils.load_json(config)
+        data = dict(config) if isinstance(config, dict) else io_utils.load_json(config)
         self.robot_type = data['robot_type']
+        self.mjcf_path = _robot_mjcf_path(data)
         self.ik_iterations = data['ik_iterations']
         self.joint_limit_weight = data['joint_limit_weight']
 

@@ -1,12 +1,34 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+from pathlib import Path
+
 import warp as wp
 import numpy as np
 
 import soma_retargeter.utils.pose_utils as pose_utils
 from soma_retargeter.animation.animation_buffer import AnimationBuffer
 from soma_retargeter.animation.skeleton import SkeletonInstance
+
+
+def resolve_file_path(path_like, search_roots=()):
+    """Resolve a local file path against the working directory and known roots."""
+    path = Path(path_like).expanduser()
+    if path.is_absolute():
+        if path.exists():
+            return path.resolve()
+        raise FileNotFoundError(f"[ERROR]: File not found: {path}")
+
+    roots = [Path.cwd(), *[Path(root) for root in search_roots]]
+    tried = []
+    for root in roots:
+        candidate = (root / path).resolve()
+        tried.append(candidate)
+        if candidate.exists():
+            return candidate
+
+    tried_str = "\n".join(f"  - {candidate}" for candidate in tried)
+    raise FileNotFoundError(f"[ERROR]: Could not resolve file [{path_like}]. Tried:\n{tried_str}")
 
 
 def create_child_parent_map(model):

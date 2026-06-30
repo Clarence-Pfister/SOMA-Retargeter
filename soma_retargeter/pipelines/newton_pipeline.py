@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+from pathlib import Path
+
 import warp as wp
 import numpy as np
 import newton
@@ -24,6 +26,21 @@ _DEFAULT_JOINT_LIMIT_OBJECTIVE_WEIGHT = 10.0
 _DEFAULT_SMOOTH_JOINT_FILTER_OBJECTIVE_WEIGHT = 5.5
 _DEFAULT_NUM_INITIALIZATION_FRAMES = 10
 _DEFAULT_NUM_STABILIZATION_FRAMES = 5
+
+
+def _path_search_roots():
+    roots = [io_utils.get_configs_dir(), io_utils.get_package_root()]
+    roots.extend(io_utils.get_package_root().parents)
+    roots.extend(Path.cwd().parents)
+    return roots
+
+
+def _robot_mjcf_path(retargeter_config):
+    custom_path = retargeter_config.get('mjcf_path')
+    if custom_path:
+        return newton_utils.resolve_file_path(custom_path, _path_search_roots())
+
+    return newton.utils.download_asset("unitree_g1") / "mjcf/g1_29dof_rev_1_0.xml"
 
 
 class NewtonPipeline:
@@ -71,8 +88,7 @@ class NewtonPipeline:
 
         if (self.target_type == pipeline_utils.TargetType.UNITREE_G1):
             self.robot_builder = newton.ModelBuilder()
-            self.robot_builder.add_mjcf(
-                newton.utils.download_asset("unitree_g1") / "mjcf/g1_29dof_rev_1_0.xml")
+            self.robot_builder.add_mjcf(_robot_mjcf_path(retargeter_config))
 
             self.human_robot_scaler = HumanToRobotScaler(
                 skeleton, retargeter_config['model_height'], io_utils.get_config_file(retargeter_config['human_robot_scaler_config']))
@@ -102,7 +118,11 @@ class NewtonPipeline:
                 self.mapped_joints.index("LeftFoot"),
                 self.mapped_joints.index("RightFoot")]
 
-            self.feet_stabilizer = FeetStabilizer(io_utils.get_config_file(retargeter_config['feet_stabilizer_config']))
+            feet_stabilizer_config = io_utils.load_json(
+                io_utils.get_config_file(retargeter_config['feet_stabilizer_config']))
+            if retargeter_config.get('mjcf_path'):
+                feet_stabilizer_config['mjcf_path'] = retargeter_config['mjcf_path']
+            self.feet_stabilizer = FeetStabilizer(feet_stabilizer_config)
             self.joint_limit_clamper = JointLimitClamper(self.ik_model)
 
             self.initialization_pose = None
